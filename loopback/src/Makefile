@@ -1,4 +1,4 @@
-all: fxs pylint
+all: fxs
 .PHONY: all
 
 # Include standard NCS examples build definitions and rules
@@ -27,8 +27,5 @@ $(DIRS):
 
 clean:
 	rm -rf $(DIRS)
-
-pylint:
-	pylint --rcfile=.pylintrc ../python/loopback
 
 .PHONY: clean pylint

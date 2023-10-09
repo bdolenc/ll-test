@@ -16,13 +16,14 @@ Pylint is a widely used static code analysis tool for Python programming. It ass
 
 When writing Python code for service mapping or other NSO development Pylint is a great tool to use. In the following example you will use it to lint your package code as part of package build process.
 
+Since usually you build packages as part of a CI job with that the Pylint will also check the Python code. With that you prevent that syntactic errors or code ends up in a merge request since for a successful pipeline run you have to fix them.
 ## Use Pylint for NSO Python package analysis
 
-You will learn how to use Pylint on an existing NSO package that uses Python to implement mapping logic.
+You will learn how to use Pylint on an existing NSO package that uses Python to implement mapping logic. In the `src/` folder you will find the sample loopback package you will work with in this lab.
 
 ### Modify package Makefile to include pylint
 
-First thing you will do is add recipe for running pylint to the package Makefile. Open Makefile under `src/loopback/src/Makefile` and add the the call for `pylint` target to the `all:` target on the first line:  
+First add a recipe for running Pylint to the package Makefile. Open Makefile under `src/loopback/src/Makefile` and add the the call for `pylint` target to the `all:` target on the first line:  
 
 ```Makefile
 all: fxs pylint
@@ -43,6 +44,10 @@ pylint --generate-rcfile > .pylintrc
 ```
 
 Build the package using `make all` target, this will also trigger the `pylint` target you added as a dependency:
+```
+make all
+```
+Output:
 ```
 developer:src > make all
 mkdir -p java/src//
@@ -106,7 +111,7 @@ Let's say you want to make an exception here and keep the access to the `_path` 
         self.log.info('Service create(service=', service._path, ')') # pylint: disable=protected-access
 ```
 
-Re-run the linter and you will see that now only the convention problems remains. Fix the import ordering problem by placing the import of the ipaddress package before the `import ncs`. The convention is to import Python standard libraries before 3rd party imports.
+Re-run the linter and you will see that now only the convention problems remains. Fix the import ordering problem by placing the import of the ipaddress package before the `import ncs`. The convention is to import Python standard libraries before third party imports.
 
 ```python
 # -*- mode: python; python-indent: 4 -*-
@@ -132,6 +137,10 @@ disable=raw-checker-failed,
 Re-run the `make all` command. Now all errors are fixed or suppressed and the build is successful.
 
 ```bash
+make all
+```
+Output:
+```bash
 developer:src > make all
 pylint --rcfile=.pylintrc ../python/loopback
 
@@ -145,7 +154,7 @@ In the following section you will refactor an example of Python NSO service call
 
 ## Loopback Python example
 
-Study the Python service callback function bellow and try to identify the problems with the style, modularity and maintainability of the code.
+Study the Python service callback function bellow and try to identify the problems with the style, modularity and maintainability of the code. Replace the `ServiceCallbacks` class in `loopback/python/loopback/loopback.py` with the snippet bellow and edit it according to instructions bellow.
 
 ```python
 import ncs
@@ -157,49 +166,57 @@ class ServiceCallbacks(Service):
     def cb_create(self, tctx, root, service, proplist):
         self.log.info('Service create(service=', service._path, ')')
 
-        ip_prefix = service.ip_prefix
-        self.log.debug(f'Value of ip-prefix leaf is {ip_prefix}')
-        net = ipaddress.IPv4Network(ip_prefix)
+        management_prefix = service.management_prefix
+        self.log.debug(f'Value of management-prefix leaf is {management_prefix}')
+        net = ipaddress.IPv4Network(management_prefix)
         ip_address = list(net.hosts())[0]
 
-        gateway_prefix = service.gateway_prefix
-        self.log.debug(f'Value of gateway-prefix leaf is {gateway_prefix}')
-        net = ipaddress.IPv4Network(gateway_prefix)
-        gateway_address = list(net.hosts())[0]
+        bgp_prefix = service.bgp_prefix
+        self.log.debug(f'Value of bgp-prefix leaf is {bgp_prefix}')
+        net = ipaddress.IPv4Network(bgp_prefix)
+        bgp_address = list(net.hosts())[0]
         vars = ncs.template.Variables()
-        vars.add('IP_ADDRESS', ip_address)
-        vars.add('GATEWAY_ADDRESS', gateway_address)
+        vars.add('MANAGEMENT_ADDRESS', management_address)
+        vars.add('BGP_ADDRESS', bgp_address)
         template = ncs.template.Template(service)
         template.apply('loopback-template', vars)
 ```
 
-First thing that we can improve in the given code is to use function that will calculate the IP address and gateway address from the given prefix. With this we avoid repeating the same code for the calculation multiple times and we can also use it in the future.
+First thing that we can improve in the given code is to use function that will calculate the management IP address and bgp address from the given prefix. With this we avoid repeating the same code for the calculation multiple times and we can also use it in the future.
 
-The function to calculate the address can look like this:
+The function to calculate the address from the prefix should look like this:
 ```python
-    def calculate_ip_address(self, prefix):
-        self.log.debug(f'Value of prefix leaf is {prefix}')
-        net = ipaddress.IPv4Network(prefix)
-        return list(net.hosts())[0]
+def calculate_ip_address(prefix):
+    net = ipaddress.IPv4Network(prefix)
+    return str(next(net.hosts()))
 ```
 
-In `the cb_create` then just call the function for the ip address and the gateway address calculation:
+In `the cb_create` then just call the function for the management address and the bgp address calculation:
 ```python
 class ServiceCallbacks(Service):
     @Service.create
     def cb_create(self, tctx, root, service, proplist):
         self.log.info('Service create(service=', service._path, ')')
 
-        ip_address = self.calculate_ip_address(service.ip_prefix)
-        gateway_address = self.calculate_ip_address(service.gateway_prefix)
+        management_address = calculate_ip_address(service.management_prefix)
+        bgp_address = calculate_ip_address(service.bgp_prefix)
         vars = ncs.template.Variables()
-        vars.add('IP_ADDRESS', ip_address)
-        vars.add('GATEWAY_ADDRESS', gateway_address)
+        vars.add('MANAGEMENT_ADDRESS', management_address)
+        vars.add('BGP_ADDRESS', bgp_address)
         template = ncs.template.Template(service)
         template.apply('loopback-template', vars)
 ```
 
 Another problem with the code is incorrect usage of the ipaddress library. Currently we are generating a list of all the host addresses that exists for give prefix. This is time and space consuming. In the terminal tab enter `python3` to enter Python terminal and type in the following snippet. Press enter and observe how long does it take for the address to be returned:
+```
+python3
+import ipaddress
+import ipaddress
+net = ipaddress.IPv4Network('10.0.0.0/8')
+list(net.hosts())[0]          
+```
+
+Output:
 ```
 developer:~ > python3
 Python 3.11.2 (main, Jun 28 2023, 12:00:22) [GCC 8.5.0 20210514 (Red Hat 8.5.0-18)] on linux
@@ -213,7 +230,11 @@ IPv4Address('10.0.0.1')
 It takes more than 10 seconds to get the IP address back since in the background Python is creating a list of more than 16 milion addresses. It gets even worse for IPv6 ranges. Such long calculations in the `cb_create` will significantly impact performance and throughput of the NSO system.
 
 The better way to get the first usable host address is to read just the next IP address from the generator that the library creates when you instantiate a new network object. Test the following snippet:
-
+```
+net = ipaddress.IPv4Network('10.0.0.0/8')
+next(net.hosts())        
+```
+Output:
 ```
 >>> net = ipaddress.IPv4Network('10.0.0.0/8')
 >>> next(net.hosts())        
@@ -227,26 +248,36 @@ class ServiceCallbacks(Service):
     def cb_create(self, tctx, root, service, proplist):
         self.log.info('Service create(service=', service._path, ')')
 
-        ip_address = self.calculate_ip_address(service.ip_prefix)
-        gateway_address = self.calculate_ip_address(service.gateway_prefix)
+        management_address = calculate_ip_address(service.management_prefix)
+        bgp_address = calculate_ip_address(service.bgp_prefix)
         vars = ncs.template.Variables()
-        vars.add('IP_ADDRESS', ip_address)
-        vars.add('GATEWAY_ADDRESS', gateway_address)
+        vars.add('MANAGEMENT_ADDRESS', management_address)
+        vars.add('BGP_ADDRESS', bgp_address)
         template = ncs.template.Template(service)
         template.apply('loopback-template', vars)
 
-    def calculate_ip_address(self, prefix):
-        self.log.debug(f'Value of prefix leaf is {prefix}')
-        net = ipaddress.IPv4Network(prefix)
-        return str(next(net.hosts()))
+
+def calculate_ip_address(prefix):
+    net = ipaddress.IPv4Network(prefix)
+    return str(next(net.hosts()))
 ```
+
+Make sure that the final version of the `loopback/python/loopback/loopback.py` looks like the snippet above since you will use this version of the code to implement unit tests.
 
 # Use interactive Python terminal to speed up prototyping
 
-Often during NSO development you need to test how some Python code works on the actual NSO CDB data. Doing this through actual service code change requires that you reload or re-deploy the package which takes time and it increases the duration of the development feedback loop.
+Often during NSO development you need to test how some Python code works on the actual NSO CDB data. Doing this through the actual service code change requires that you reload or re-deploy the package which takes time and it increases the duration of the development feedback loop.
 
-You can use Python terminal on your NSO server and connect to the CDB through MAAPI session. By creating a maagic object you get the access to the CDB in the same way as from the `cb_create` in a service. Enter interactive Python terminal and enter the following Python code:
-
+You can use Python terminal on your NSO server and connect to the CDB through MAAPI session. By creating a maagic object you get the access to the CDB in the same way as from the `cb_create` in a service. Enter interactive Python terminal and use the following Python code:
+```
+python3
+import ncs  
+m = ncs.maapi.Maapi()  
+m.start_user_session('admin', 'system', [])  
+trans = m.start_write_trans()  
+root = ncs.maagic.get_root(trans)
+```
+Output:
 ```
 developer:~ > python3
 Python 3.11.2 (main, Jun 28 2023, 12:00:22) [GCC 8.5.0 20210514 (Red Hat 8.5.0-18)] on linux
@@ -274,17 +305,17 @@ trans.apply()
 ```
 
 After you can check configuration through NSO CLI and you will see that the `test` authgroup has been created.
-
+```
+ncs_cli -C -u admin
+show running-config devices authgroups 
+```
+Output:
 ```
 developer:~ > ncs_cli -C -u admin
 
 User admin last logged in 2023-09-20T11:57:17.670114+00:00, to devpod-7293941003772680233-7d74554b96-l2p9g, from 127.0.0.1 using cli-console
 admin connected from 127.0.0.1 using console on devpod-7293941003772680233-7d74554b96-l2p9g
 admin@ncs# show running-config devices authgroups 
-devices authgroups group default
- default-map same-user
- default-map same-pass
-!
 devices authgroups group test
  default-map same-user
  default-map same-pass
@@ -294,6 +325,11 @@ admin@ncs#
 
 If you need help with the Python maagic data access you can use the CLI tool to generate the code for you. First enable devtools in the NSO CLI:
 ```
+ncs_cli -C -u admin
+devtools true
+```
+Output:
+```
 developer:~ > ncs_cli -C -u admin
 
 User admin last logged in 2023-09-20T11:57:17.670114+00:00, to devpod-7293941003772680233-7d74554b96-l2p9g, from 127.0.0.1 using cli-console
@@ -302,6 +338,11 @@ admin@ncs# devtools true
 ```
 
 Then do the configuration that you want to do through maagic API. Instead of commit use the `show configuration | display maagic` command. To continue with the authgroup example you would do:
+```
+devices authgroups group test default-map same-user same-pass
+show configuration | display maagic 
+```
+Output:
 ```
 admin@ncs(config)# devices authgroups group test default-map same-user same-pass
 admin@ncs(config)# show configuration | display maagic 
@@ -318,6 +359,8 @@ Note that there is a minor bug so some dashes (`-`) need to be replaced with und
 
 Testing is a critical and fundamental aspect of software development that plays an important role in ensuring the reliability, functionality, and overall quality of a software product. Testing in software development involves various approaches and levels to ensure that software works as intented. In the following example you will learn how to unit test the function that you have refactored for calculating ip addresses and how to automatically run it as part of service package build procedure. 
 
+As with Pylint, with this approach unit tests will automatically be executed as part of a build job that is usually part of CI pipeline for the NSO.
+
 Another example will show how you can run and do the functional test of the service package that stores expected device configuration and compares it with the expected output.
 
 ## Unit testing
@@ -333,8 +376,64 @@ class TestLoopbackService(unittest.TestCase):
         self.assertEqual('10.0.0.1', calculate_ip_address('10.0.0.0/24'))
 ```
 
-Execute the unit test by...
+Execute the unit test by running the following command from the `src/loopback/src` directory:
+
+```
+cd ~/src/loopback/src/
+python -m unittest discover --start-directory ../python/tests --top-level-directory ../python
+```
+
+Output:
+```
+developer:~ > cd ~/src/loopback/src/
+developer:src > python -m unittest discover --start-directory ../python/tests --top-level-directory ../python
+.
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+OK
+```
+
+Open the `Makefile` in the loopback package and add the `test` target as dependency to the `all` target. Then add the `test` target that should execute the `unittest` you manually executed before.
+
+```
+all: fxs pylint test
+
+...
+
+test:
+    developer:src > python -m unittest discover --start-directory ../python/tests --top-level-directory ../python
+```
+
+Now everytime that you will build the `loopback` package the unit tests will be executed as well. This is useful since it ensures that any changes to the Python code that might break the `calculate_ip_address` function will be detected during package build. 
 
 ## System testing and storing expected configuration
 
-TBD
+In the following section you will implement a system test for the `loopback` package. This will test that the package succesfully loads into the NSO and that you can create device configurations with it. For better control over the produced device configuration you will also implement saving of the device configuration after each test run and comparing it with the expected configuration.
+
+The idea behind this is that you inspect the configuration that loopback package creates for the given output and save it in the `expected_configuration` directory. After each test run you save the configuration into `output` directory and the compare `output` of a current test run with the known `expected_configuration`. 
+
+This ensures that there are no unwanted configuration changes that would be result of a bad code or template change. If the change is expected you update the `expected_configuration` and the test will pass again.
+
+Start by creating a netsim device that you will configure with loopback interfaces in the test. Create new folder `test` and use `ncs-netsim` command to add a ios-xr device to it.
+
+```
+mkdir test
+cd test
+ncs-netsim create-device /opt/ncs/current/packages/neds/cisco-iosxr-cli-3.5/ core-router
+```
+Output:
+```
+developer:src > mkdir test
+developer:src > cd test
+developer:test > ncs-netsim create-device /opt/ncs/current/packages/neds/cisco-iosxr-cli-3.5/ core-router
+DEVICE core-router CREATED
+```
+
+You will use `Make` automation tool for test automation that you are already familiar with from the package build process. 
+
+Start by creating a `test.mk` file in the `test` folder. Add the following `start` target to the `test.mk` that will start the generated netsim device:
+```
+start:
+	ncs-netsim --dir netsim stop start
+```

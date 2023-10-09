@@ -8,18 +8,17 @@ class ServiceCallbacks(Service):
     def cb_create(self, tctx, root, service, proplist):
         self.log.info('Service create(service=', service._path, ')')
 
-        ip_address = self.calculate_ip_address(service.ip_prefix)
-        gateway_address = self.calculate_ip_address(service.gateway_prefix)
+        ip_address = calculate_ip_address(service.ip_prefix)
+        gateway_address = calculate_ip_address(service.gateway_prefix)
         vars = ncs.template.Variables()
         vars.add('IP_ADDRESS', ip_address)
         vars.add('GATEWAY_ADDRESS', gateway_address)
         template = ncs.template.Template(service)
         template.apply('loopback-template', vars)
 
-    def calculate_ip_address(self, prefix):
-        self.log.debug(f'Value of prefix leaf is {prefix}')
-        net = ipaddress.IPv4Network(prefix)
-        return str(next(net.hosts()))
+def calculate_ip_address(prefix):
+    net = ipaddress.IPv4Network(prefix)
+    return str(next(net.hosts()))
 
 
 # ---------------------------------------------
