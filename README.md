@@ -432,8 +432,143 @@ DEVICE core-router CREATED
 
 You will use `Make` automation tool for test automation that you are already familiar with from the package build process. 
 
-Start by creating a `test.mk` file in the `test` folder. Add the following `start` target to the `test.mk` that will start the generated netsim device:
+Start by creating a `Makefile` file in the `test` folder. Add the following `start` target to the created `Makefile` that will start the generated netsim device:
 ```
 start:
-	ncs-netsim --dir netsim stop start
+	ncs-netsim --dir netsim stop
+	ncs-netsim --dir netsim start
 ```
+
+A good practice is to write the targets in an immutable manner - here we are always first stopping the netsim device to avoid failures when device would be already started.
+
+Continue by copying the loopback package to the NSO running directory. Also copy iosxr-cli-3.5 NED from the installation directory.
+```
+cd ..
+cp -r loopback /nso/run/packages/
+cp -r /opt/ncs/current/packages/neds/cisco-iosxr-cli-3.5 /nso/run/packages/
+```
+
+Enter the NSO CLI and execute packages reload command.
+```
+ncs_cli -C -u admin
+packages reload
+```
+Output:
+```
+developer:src > ncs_cli -C -u admin
+
+User admin last logged in 2023-10-09T05:48:46.970494+00:00, to devpod-7429870700027285884-69f76849db-jhgcg, from 127.0.0.1 using cli-console
+admin connected from 127.0.0.1 using console on devpod-7429870700027285884-69f76849db-jhgcg
+admin@ncs# packages reload
+
+>>> System upgrade is starting.
+>>> Sessions in configure mode must exit to operational mode.
+>>> No configuration changes can be performed until upgrade has completed.
+>>> System upgrade has completed successfully.
+reload-result {
+    package cisco-iosxr-cli-3.5
+    result true
+}
+reload-result {
+    package loopback
+    result true
+}
+admin@ncs# 
+```
+
+In the `test` directory run the following command:
+```
+ncs-netsim ncs-xml-init > core-router.xml
+```
+
+This will create a `core-router.xml` file that contains the NSO configuration for the netsim device.
+
+Continue by adding a target `add-device:` into the test Makefile:
+
+```
+add-device:
+	echo -e "config\n devices authgroup group default default-map remote-name admin remote-password admin\ncommit\n" | ncs_cli -C -u admin
+	ncs_load -m -l core-router.xml
+```
+
+This will create the authgroup and apply the configuration for the `core-router` device that is in the generated XML file.
+
+The next step is to prepare device to be configured by the NSO. You need to fetch SSH keys and sync configuration from the device. Under `add-device` target add the following commands:
+```
+add-device:
+	echo -e "config\n devices authgroup group default default-map remote-name admin remote-password admin\ncommit\n" | ncs_cli -C -u admin
+	ncs_load -m -l core-router.xml
+	echo "devices fetch-ssh-host-keys" | ncs_cli -C -u admin
+	echo "devices device core-router sync-from" | ncs_cli -C -u admin
+```
+
+Now add the `configure-loopback` target that will be used to create sample loopback configuration:
+
+```
+configure-loopback:
+	echo -e "config\nloopback test device core-router management-intf 1 management-prefix 10.0.0.0/24 bgp-intf 2 bgp-prefix 192.168.0.0/24\ncommit\n" | ncs_cli -C -u admin
+```
+
+Create two folders in `test`: `expected` to store configuration that is examined and tested, and `output` where configuration after each test execution is stored.
+```
+cd /src/test
+mkdir expected
+mkdir output
+```
+
+To the `Makefile` add `save-output` target that will store the device configuration from the NSO to the `output/device-loopback.xml` file.
+```
+save-output:
+	ncs_load -P "/devices/device[name='core-router']/config" -F p > output/device-loopback.xml
+```
+
+Another target you will need is `check-diff` that will make sure that output and expected configurations match. Otherwise `make` will fail and diff will be displayed.
+```
+check-diff:
+	diff -c expected/ output/
+```
+
+The `test` and `all` targets are there to execute multiple commands. Add them to Makefile:
+```
+test:
+	$(MAKE) configure-loopback
+	$(MAKE) save-output
+	$(MAKE) check-diff
+
+all:
+	$(MAKE) start
+	$(MAKE) add-device
+	$(MAKE) test
+```
+
+The final `Makefile` should look like this:
+```
+start:
+	ncs-netsim --dir netsim stop
+
+add-device:
+	echo -e "config\n devices authgroup group default default-map remote-name admin remote-password admin\ncommit\n" | ncs_cli -C -u admin
+	ncs_load -m -l core-router.xml
+	echo "devices fetch-ssh-host-keys" | ncs_cli -C -u admin
+	echo "devices device core-router sync-from" | ncs_cli -C -u admin
+
+configure-loopback:
+	echo -e "config\nloopback test device core-router management-intf 1 management-prefix 10.0.0.0/24 bgp-intf 2 bgp-prefix 192.168.0.0/24\ncommit\n" | ncs_cli -C -u admin
+
+save-output:
+	ncs_load -P "/devices/device[name='core-router']/config" -F p > output/device-loopback.xml
+
+check-diff:
+	diff -c expected/ output/
+
+test:
+	$(MAKE) configure-loopback
+	$(MAKE) save-output
+	$(MAKE) check-diff
+
+all:
+	$(MAKE) start
+	$(MAKE) add-device
+	$(MAKE) test
+```
+

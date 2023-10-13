@@ -5,27 +5,22 @@
          <config>
            <interface xmlns="http://tail-f.com/ned/cisco-ios-xr">
              <Loopback>
-               <id>{/loopback-intf}</id>
+               <id>{/management-intf}</id>
                <ipv4>
                  <address>
-                   <ip>{$IP_ADDRESS}</ip>
+                   <ip>{$MANAGEMENT_ADDRESS}</ip>
                    <mask>255.255.255.255</mask>
                  </address>
                </ipv4>
              </Loopback>
-           </interface>
-
-           <interface xmlns="urn:ios">
              <Loopback>
-               <name>{/loopback-intf}</name>
-               <ip>
+               <id>{/bgp-intf}</id>
+               <ipv4>
                  <address>
-                   <primary>
-                     <address>{$IP_ADDRESS}</address>
-                     <mask>255.255.255.255</mask>
-                   </primary>
+                   <ip>{$BGP_ADDRESS}</ip>
+                   <mask>255.255.255.255</mask>
                  </address>
-               </ip>
+               </ipv4>
              </Loopback>
            </interface>
          </config>

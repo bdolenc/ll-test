@@ -32,13 +32,23 @@ module loopback {
       }
     }
 
-    leaf loopback-intf {
-      tailf:info "Loopback interface number";
+    leaf management-intf {
+      tailf:info "Management loopback interface number";
       type uint32;
     }
 
-    leaf ip-prefix {
-      tailf:info "IP prefix used to configure an address loopback interface";
+    leaf management-prefix {
+      tailf:info "IP prefix used to configure a management loopback interface";
+      type inet:ipv4-prefix;
+      mandatory true;
+    }
+
+    leaf bgp-intf {
+      tailf:info "BGP loopback interface number";
+      type uint32;
+    }
+    leaf bgp-prefix {
+      tailf:info "IP prefix used to configure a bgp loopback interface";
       type inet:ipv4-prefix;
       mandatory true;
     }
