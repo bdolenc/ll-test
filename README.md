@@ -8,7 +8,7 @@ After completing this Lab you will:
 
 - Be able to use Pylint for static analysis of your code
 - Learn how to refactor your code for better reusability, maintainability and performance
-- Bea able to test your code better
+- Be able to test your code better
 
 # Lint your code
 
@@ -182,7 +182,7 @@ class ServiceCallbacks(Service):
         template.apply('loopback-template', vars)
 ```
 
-First thing that we can improve in the given code is to use function that will calculate the management IP address and bgp address from the given prefix. With this we avoid repeating the same code for the calculation multiple times and we can also use it in the future.
+First thing that we can improve in the given code is to use a function that will calculate the management IP address and bgp address from the given prefix. With this we avoid repeating the same code for the calculation multiple times and we can also use it in the future.
 
 The function to calculate the address from the prefix should look like this:
 ```python
@@ -357,7 +357,7 @@ Note that there is a minor bug so some dashes (`-`) need to be replaced with und
 
 # Testing
 
-Testing is a critical and fundamental aspect of software development that plays an important role in ensuring the reliability, functionality, and overall quality of a software product. Testing in software development involves various approaches and levels to ensure that software works as intented. In the following example you will learn how to unit test the function that you have refactored for calculating ip addresses and how to automatically run it as part of service package build procedure. 
+Testing is a critical and fundamental aspect of software development that plays an important role in ensuring the reliability, functionality, and overall quality of a software product. Testing in software development involves various approaches and levels to ensure that software works as intended. In the following example you will learn how to unit test the function that you have refactored for calculating ip addresses and how to automatically run it as part of service package build procedure. 
 
 As with Pylint, with this approach unit tests will automatically be executed as part of a build job that is usually part of CI pipeline for the NSO.
 
@@ -405,11 +405,11 @@ test:
     developer:src > python -m unittest discover --start-directory ../python/tests --top-level-directory ../python
 ```
 
-Now everytime that you will build the `loopback` package the unit tests will be executed as well. This is useful since it ensures that any changes to the Python code that might break the `calculate_ip_address` function will be detected during package build. 
+Now every time that you will build the `loopback` package the unit tests will be executed as well. This is useful since it ensures that any changes to the Python code that might break the `calculate_ip_address` function will be detected during package build. 
 
 ## System testing and storing expected configuration
 
-In the following section you will implement a system test for the `loopback` package. This will test that the package succesfully loads into the NSO and that you can create device configurations with it. For better control over the produced device configuration you will also implement saving of the device configuration after each test run and comparing it with the expected configuration.
+In the following section you will implement a system test for the `loopback` package. This will test that the package successfully loads into the NSO and that you can create device configurations with it. For better control over the produced device configuration you will also implement saving of the device configuration after each test run and comparing it with the expected configuration.
 
 The idea behind this is that you inspect the configuration that loopback package creates for the given output and save it in the `expected_configuration` directory. After each test run you save the configuration into `output` directory and the compare `output` of a current test run with the known `expected_configuration`. 
 
@@ -478,6 +478,7 @@ admin@ncs#
 
 In the `test` directory run the following command:
 ```
+cd src/test
 ncs-netsim ncs-xml-init > core-router.xml
 ```
 
@@ -509,6 +510,10 @@ configure-loopback:
 	echo -e "config\nloopback test device core-router management-intf 1 management-prefix 10.0.0.0/24 bgp-intf 2 bgp-prefix 192.168.0.0/24\ncommit\n" | ncs_cli -C -u admin
 ```
 
+The remove-loopback target will be used so that you can execute the test multiple times - it makes sure that loopback service code is always executed.
+remove-loopback:
+	echo -e "config\n no loopback\ncommit\n" | ncs_cli -C -u admin
+
 Create two folders in `test`: `expected` to store configuration that is examined and tested, and `output` where configuration after each test execution is stored.
 ```
 cd /src/test
@@ -531,6 +536,7 @@ check-diff:
 The `test` and `all` targets are there to execute multiple commands. Add them to Makefile:
 ```
 test:
+    $(MAKE) remove-loopback
 	$(MAKE) configure-loopback
 	$(MAKE) save-output
 	$(MAKE) check-diff
@@ -555,6 +561,9 @@ add-device:
 configure-loopback:
 	echo -e "config\nloopback test device core-router management-intf 1 management-prefix 10.0.0.0/24 bgp-intf 2 bgp-prefix 192.168.0.0/24\ncommit\n" | ncs_cli -C -u admin
 
+remove-loopback:
+	echo -e "config\n no loopback\ncommit\n" | ncs_cli -C -u admin
+
 save-output:
 	ncs_load -P "/devices/device[name='core-router']/config" -F p > output/device-loopback.xml
 
@@ -562,6 +571,7 @@ check-diff:
 	diff -c expected/ output/
 
 test:
+    $(MAKE) remove-loopback
 	$(MAKE) configure-loopback
 	$(MAKE) save-output
 	$(MAKE) check-diff
@@ -572,3 +582,167 @@ all:
 	$(MAKE) test
 ```
 
+Now invoke the `all` target to start the netsim device, configure NSO with prerequisite configuration and test the package:
+```
+make test
+```
+
+Output:
+```
+developer:test > make all
+make start
+make[1]: Entering directory '/home/developer/src/test'
+ncs-netsim --dir netsim stop
+DEVICE core-router STOPPED
+ncs-netsim --dir netsim start
+DEVICE core-router OK STARTED
+make[1]: Leaving directory '/home/developer/src/test'
+make add-device
+make[1]: Entering directory '/home/developer/src/test'
+echo -e "config\n devices authgroup group default default-map remote-name admin remote-password admin\ncommit\n" | ncs_cli -C -u admin
+Commit complete.
+ncs_load -m -l core-router.xml
+echo "devices fetch-ssh-host-keys" | ncs_cli -C -u admin
+fetch-result {
+    device core-router
+    result unchanged
+    fingerprint {
+        algorithm ssh-ed25519
+        value 11:5e:be:6c:b1:22:b3:f6:24:2a:10:31:dd:ad:8e:c4
+    }
+    fingerprint {
+        algorithm ssh-rsa
+        value c0:80:68:f8:f3:5c:09:7d:c8:05:3f:a1:3d:c8:cb:8c
+    }
+}
+echo "devices device core-router sync-from" | ncs_cli -C -u ad
+result true
+make[1]: Leaving directory '/home/developer/src/test'
+make test
+make[1]: Entering directory '/home/developer/src/test'
+make configure-loopback
+make[2]: Entering directory '/home/developer/src/test'
+echo -e "config\nloopback test device core-router management-intf 1 management-prefix 10.0.0.0/24 bgp-intf 2 bgp-prefix 192.168.0.0/24\ncommit\n" | ncs_cli -C -u admin
+Commit complete.
+make[2]: Leaving directory '/home/developer/src/test'
+make save-output
+make[2]: Entering directory '/home/developer/src/test'
+ncs_load -P "/devices/device[name='core-router']/config" -F p > output/device-loopback.xml
+make[2]: Leaving directory '/home/developer/src/test'
+make check-diff
+make[2]: Entering directory '/home/developer/src/test'
+diff -c expected/ output/
+Only in output/: device-loopback.xml
+make[2]: *** [Makefile:18: check-diff] Error 1
+make[2]: Leaving directory '/home/developer/src/test'
+make[1]: *** [Makefile:23: test] Error 2
+make[1]: Leaving directory '/home/developer/src/test'
+make: *** [Makefile:28: all] Error 2
+developer:test > 
+```
+
+As you can see the whole test flow was executed with a single `make` command. But the test was not successful - you can see that target that checks the diff between output and expected output failed. The reason for this is that you need to create
+the expected file - you can do so by examining and copying the file created in the output directory. Open and study the output file in the editor. After you make sure that this is the expected configuration created by loopback package copy it over to `expected` directory:
+```
+cp output/device-loopback.xml expected/
+```
+
+Execute the test again. This time you can only execute the `test` target since test environment is already running:
+```
+make test
+```
+Output:
+```
+developer:test > make test
+make configure-loopback
+make[1]: Entering directory '/home/developer/src/test'
+echo -e "config\nloopback test device core-router management-intf 1 management-prefix 10.0.0.0/24 bgp-intf 2 bgp-prefix 192.168.0.0/24\ncommit\n" | ncs_cli -C -u admin
+% No modifications to commit.
+make[1]: Leaving directory '/home/developer/src/test'
+make save-output
+make[1]: Entering directory '/home/developer/src/test'
+ncs_load -P "/devices/device[name='core-router']/config" -F p > output/device-loopback.xml
+make[1]: Leaving directory '/home/developer/src/test'
+make check-diff
+make[1]: Entering directory '/home/developer/src/test'
+diff -c expected/ output/
+make[1]: Leaving directory '/home/developer/src/test'
+developer:test > 
+```
+
+There is no difference between the files and the test was successful. To see how `check-diff` detects unintended changes to the configuration break the `loopback-template.xml` file on purpose. Open the `loopback/templates/loopback-template.xml` file in the editor and remove the line 21:
+```
+        <mask>255.255.255.255</mask>
+```
+
+This will create the bgp loopback interface without the mask. Copy changed file to NSO running directory:
+```
+cp loopback/templates/loopback-template.xml /nso/run/packages/loopback/templates/
+```
+Output:
+```
+developer:src > cp loopback/templates/loopback-template.xml /nso/run/packages/loopback/templates/
+```
+
+Enter NSO CLI and redeploy the loopback package:
+```
+ncs_cli
+packages package loopback redeploy
+```
+Output:
+```
+developer:src > ncs_cli -C -u admin
+
+User admin last logged in 2023-10-13T11:34:40.601179+00:00, to devpod-7430150751460313849-6b75d9874-c8gvn, from 127.0.0.1 using cli-console
+admin connected from 127.0.0.1 using console on devpod-7430150751460313849-6b75d9874-c8gvn
+admin@ncs# packages package loopback redeploy 
+result true
+admin@ncs# 
+```
+
+Now execute the test target again and observe the output:
+```
+make test
+```
+Output:
+```
+developer:test > make test
+make remove-loopback
+make[1]: Entering directory '/home/developer/src/test'
+echo -e "config\n no loopback\ncommit\n" | ncs_cli -C -u admin
+% No modifications to commit.
+make[1]: Leaving directory '/home/developer/src/test'
+make configure-loopback
+make[1]: Entering directory '/home/developer/src/test'
+echo -e "config\nloopback test device core-router management-intf 1 management-prefix 10.0.0.0/24 bgp-intf 2 bgp-prefix 192.168.0.0/24\ncommit\n" | ncs_cli -C -u admin
+Commit complete.
+make[1]: Leaving directory '/home/developer/src/test'
+make save-output
+make[1]: Entering directory '/home/developer/src/test'
+ncs_load -P "/devices/device[name='core-router']/config" -F p > output/device-loopback.xml
+make[1]: Leaving directory '/home/developer/src/test'
+make check-diff
+make[1]: Entering directory '/home/developer/src/test'
+diff -c expected/ output/
+diff -c expected/device-loopback.xml output/device-loopback.xml
+*** expected/device-loopback.xml        2023-10-13 11:32:25.373773316 +0000
+--- output/device-loopback.xml  2023-10-13 11:58:00.923751692 +0000
+***************
+*** 18,24 ****
+              <ipv4>
+                <address>
+                  <ip>192.168.0.1</ip>
+-                 <mask>255.255.255.255</mask>
+                </address>
+              </ipv4>
+            </Loopback>
+--- 18,23 ----
+make[1]: *** [Makefile:21: check-diff] Error 1
+make[1]: Leaving directory '/home/developer/src/test'
+make: *** [Makefile:27: test] Error 2
+developer:test > 
+```
+
+As you can see in the output our target detected that `mask` is not configured anymore the `test` target failed.
+
+You have successfully finished the lab.
