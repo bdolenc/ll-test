@@ -1,23 +1,28 @@
 # -*- mode: python; python-indent: 4 -*-
-import ipaddress
 import ncs
+import ipaddress
 from ncs.application import Service
+
 
 class ServiceCallbacks(Service):
     @Service.create
     def cb_create(self, tctx, root, service, proplist):
-        self.log.info('Service create(service=', service._path, ')') # pylint: disable=protected-access
+        self.log.info('Service create(service=', service._path, ')')
 
-        ip_prefix = service.ip_prefix
-        self.log.debug(f'Value of ip-prefix leaf is {ip_prefix}')
-        net = ipaddress.IPv4Network(ip_prefix)
-        ip_address = next(net.hosts())
+        management_prefix = service.management_prefix
+        self.log.debug(f'Value of management-prefix leaf is {management_prefix}')
+        net = ipaddress.IPv4Network(management_prefix)
+        management_address = list(net.hosts())[0]
 
-        tvars = ncs.template.Variables()
-        tvars.add('IP_ADDRESS', ip_address)
+        bgp_prefix = service.bgp_prefix
+        self.log.debug(f'Value of bgp-prefix leaf is {bgp_prefix}')
+        net = ipaddress.IPv4Network(bgp_prefix)
+        bgp_address = list(net.hosts())[0]
+        vars = ncs.template.Variables()
+        vars.add('MANAGEMENT_ADDRESS', management_address)
+        vars.add('BGP_ADDRESS', bgp_address)
         template = ncs.template.Template(service)
-        template.apply('loopback-template', tvars)
-
+        template.apply('loopback-template', vars)
 
 # ---------------------------------------------
 # COMPONENT THREAD THAT WILL BE STARTED BY NCS.
