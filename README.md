@@ -16,7 +16,7 @@ Pylint is a widely used static code analysis tool for Python programming. It ass
 
 When writing Python code for service mapping or other NSO development Pylint is a great tool to use. In the following example you will use it to lint your package code as part of package build process.
 
-Since usually you build packages as part of a CI job with that the Pylint will also check the Python code. With that you prevent that syntactic errors or code ends up in a merge request since for a successful pipeline run you have to fix them.
+Usually packages are built as part of a CI job. By adding the pylint to the `all` target of a package you will make sure the Python code is always linted. With that you prevent that syntactic errors or code ends up in a merge request since for a successful pipeline run you have to fix them.
 ## Use Pylint for NSO Python package analysis
 
 You will learn how to use Pylint on an existing NSO package that uses Python to implement mapping logic. In the `~/src/` folder you will find the sample loopback package you will work with in this lab.
@@ -118,7 +118,7 @@ import ipaddress
 import ncs
 from ncs.application import Service
 ```
-There are now only documentation related convention messages. In case you want to ignore them package wide you can suppress them by changing the `.pylintrc` file. Open it and find keyword `disable` under MESSAGE CONTROL section. Add the convention messages that are still triggered:
+There are now only documentation related convention messages. In case you want to ignore them package wide you can suppress them by changing the `.pylintrc` file. Open it and find keyword `disable` under MESSAGES CONTROL section. Add the convention messages that are still triggered:
 ```
 disable=raw-checker-failed,
         bad-inline-option,
@@ -193,19 +193,34 @@ def calculate_ip_address(prefix):
 ```
 
 In `the cb_create` then just call the function for the management address and the bgp address calculation:
-```python
+```diff
 class ServiceCallbacks(Service):
     @Service.create
     def cb_create(self, tctx, root, service, proplist):
         self.log.info('Service create(service=', service._path, ')') # pylint: disable=protected-access
 
-        management_address = calculate_ip_address(service.management_prefix)
-        bgp_address = calculate_ip_address(service.bgp_prefix)
+-        management_prefix = service.management_prefix
+-        self.log.debug(f'Value of management-prefix leaf is {management_prefix}')
+-        net = ipaddress.IPv4Network(management_prefix)
+-        management_address = list(net.hosts())[0]
+-
+-        bgp_prefix = service.bgp_prefix
+-        self.log.debug(f'Value of bgp-prefix leaf is {bgp_prefix}')
+-        net = ipaddress.IPv4Network(bgp_prefix)
+-        bgp_address = list(net.hosts())[0]
+ 
++        management_address = calculate_ip_address(service.management_prefix)
++        bgp_address = calculate_ip_address(service.bgp_prefix)
         tvars = ncs.template.Variables()
         tvars.add('MANAGEMENT_ADDRESS', management_address)
         tvars.add('BGP_ADDRESS', bgp_address)
         template = ncs.template.Template(service)
         template.apply('loopback-template', tvars)
+
+
++def calculate_ip_address(prefix):
++    net = ipaddress.IPv4Network(prefix)
++    return str(next(net.hosts()))
 ```
 
 Another problem with the code is incorrect usage of the ipaddress library. Currently we are generating a list of all the host addresses that exists for give prefix. This is time and space consuming. In the terminal tab enter `python3` to enter Python terminal and type in the following snippet. Press enter and observe how long does it take for the address to be returned:
@@ -340,7 +355,7 @@ admin@ncs# devtools true
 Then do the configuration that you want to do through maagic API. Instead of commit use the `show configuration | display maagic` command. To continue with the authgroup example you would do:
 ```
 config
-devices authgroups group test default-map same-user same-pass
+devices authgroups group test2 default-map same-user same-pass
 top
 show configuration | display maagic 
 ```
@@ -350,16 +365,17 @@ admin@ncs(config)# devices authgroups group test default-map same-user same-pass
 admin@ncs(config)# top
 admin@ncs(config)# show configuration | display maagic 
 root = ncs.maagic.get_root(t)
-root.ncs__devices.authgroups.group.create('default')
-root.ncs__devices.authgroups.group['default'].default-map.create()
-root.ncs__devices.authgroups.group['default'].default-map.same-user.create()
-root.ncs__devices.authgroups.group['default'].default-map.same-pass.create()
+root.ncs__devices.authgroups.group.create('test2')
+root.ncs__devices.authgroups.group['test2'].default-map.create()
+root.ncs__devices.authgroups.group['test2'].default-map.same-user.create()
+root.ncs__devices.authgroups.group['test2'].default-map.same-pass.create()
 ```
 
-Note that there is a minor bug so some dashes (`-`) need to be replaced with underscores (`_`).
+Note that there is a minor bug so some dashes (`-`) need to be replaced with underscores (`_`). Make sure that you use different group name (one that does not exist yet) otherwise NSO will figure out that group already exists and it will not show the Python code to create it.
 
 Exit NSO CLI:
 ```
+admin@ncs(config)# exit
 admin@ncs# exit
 ```
 
@@ -367,7 +383,7 @@ admin@ncs# exit
 
 Testing is a critical and fundamental aspect of software development that plays an important role in ensuring the reliability, functionality, and overall quality of a software product. Testing in software development involves various approaches and levels to ensure that software works as intended. In the following example you will learn how to unit test the function that you have refactored for calculating ip addresses and how to automatically run it as part of service package build procedure. 
 
-As with Pylint, with this approach unit tests will automatically be executed as part of a build job that is usually part of CI pipeline for the NSO.
+As with Pylint, with this approach unit tests will be executed as part of a build job. If you are building your packages as part of a CI job the test will be executed in the CI too.
 
 Another example will show how you can run and do the functional test of the service package that stores expected device configuration and compares it with the expected output.
 
@@ -381,7 +397,9 @@ touch ~/src/loopback/python/tests/test_loopback.py
 touch ~/src/loopback/python/tests/__init__.py
 ```
 
-You will use Python built-in Unit test library to implement a unit test that will check if function works correctly and returns correct host address for a given prefix. Add the following code to the created file:
+> Note: The \_\_init\_\_.py file is needed so that `test_loopback.py` file is recognized by unittest library as Python module.
+
+You will use Python built-in Unit test library to implement a unit test that will check if function works correctly and returns correct host address for a given prefix. Add the following code to the created file `test_loopback.py`:
 
 ```python
 import unittest
@@ -453,7 +471,7 @@ Start by creating a netsim device that you will configure with loopback interfac
 
 ```
 mkdir ~/src/test
-cd test
+cd ~/src/test
 ncs-netsim create-device $NCS_DIR/packages/neds/cisco-iosxr-cli-3.5/ core-router
 ```
 Output:
@@ -554,7 +572,7 @@ configure-loopback:
 	echo -e "config\nloopback test device core-router management-intf 1 management-prefix 10.0.0.0/24 bgp-intf 2 bgp-prefix 192.168.0.0/24\ncommit\n" | ncs_cli -C -u admin
 ```
 
-The remove-loopback target will be used so that you can execute the test multiple times - it makes sure that loopback service code is always executed.
+The `remove-loopback` target will be used so that you can execute the test multiple times - it makes sure that loopback service code is always executed.
 ```
 remove-loopback:
 	echo -e "config\n no loopback\ncommit\n" | ncs_cli -C -u admin
@@ -581,10 +599,10 @@ check-diff:
 The `test` and `all` targets are there to execute multiple commands. Add them to Makefile:
 ```
 test:
-    $(MAKE) remove-loopback
-    $(MAKE) configure-loopback
-    $(MAKE) save-output
-    $(MAKE) check-diff
+	$(MAKE) remove-loopback
+	$(MAKE) configure-loopback
+	$(MAKE) save-output
+	$(MAKE) check-diff
 
 all:
 	$(MAKE) start
@@ -687,10 +705,10 @@ make: *** [Makefile:28: all] Error 2
 developer:test > 
 ```
 
-As you can see the whole test flow was executed with a single `make` command. But the test was not successful - you can see that target that checks the diff between output and expected output failed. The reason for this is that you need to create
-the expected file - you can do so by examining and copying the file `~/src/test/output/loopback.xml` created in the output directory. Open and study the output file in the editor. Alternatively, you can check the file through the terminal:
+As you can see the whole test flow was executed with a single `make` command. But the test was not successful. You can see that target that checks the diff between output and expected output failed. The reason for this is that you need to create
+the expected file - you can do so by examining and copying the file `~/src/test/output/device-loopback.xml` created in the output directory. Open and study the output file in the editor. Alternatively, you can check the file through the terminal:
 ```
-cat ~/src/test/output/loopback.xml
+cat ~/src/test/output/device-loopback.xml
 ```
 
 After you make sure that this is the expected configuration created by loopback package copy it over to `expected` directory:
@@ -722,8 +740,17 @@ developer:test >
 ```
 
 There is no difference between the files and the test was successful. To see how `check-diff` detects unintended changes to the configuration break the `loopback-template.xml` file on purpose. Open the `~/src/loopback/templates/loopback-template.xml` file in the editor and remove the line 21:
-```
-        <mask>255.255.255.255</mask>
+```diff
+			  <Loopback>
+               <id>{/bgp-intf}</id>
+               <ipv4>
+                 <address>
+                   <ip>{$BGP_ADDRESS}</ip>
+-                   <mask>255.255.255.255</mask>
+                 </address>
+               </ipv4>
+             </Loopback>
+           </interface>
 ```
 
 This will create the bgp loopback interface without the mask. Copy changed file to NSO running directory:
@@ -752,6 +779,7 @@ result true
 admin@ncs#
 admin@ncs# exit 
 ```
+> Note: Since you only changed the template it is enough to just redeploy a package. When you are changing YANG model of a package then full packages reload is needed, which takes longer especially with big models. 
 
 Now execute the test target again and observe the output:
 ```
