@@ -397,9 +397,9 @@ touch ~/src/loopback/python/tests/test_loopback.py
 touch ~/src/loopback/python/tests/__init__.py
 ```
 
-> Note: The \_\_init\_\_.py file is needed so that `test_loopback.py` file is recognized by unittest library as Python module.
+> Note: The \_\_init\_\_.py file is needed so that `test_loopback.py` file is recognized by the unittest library as a Python package.
 
-You will use Python built-in Unit test library to implement a unit test that will check if function works correctly and returns correct host address for a given prefix. Add the following code to the created file `test_loopback.py`:
+You will use Python built-in Unit test library to implement a unit test that will check if function works correctly and returns correct host address for a given prefix. Test methods must start with the `test_` prefix and are placed in a class that extends the `unittest.TestCase` class. Add the following code to the created file `test_loopback.py`:
 
 ```python
 import unittest
@@ -437,10 +437,10 @@ all: fxs pylint test
 ...
 
 test:
-    developer:src > python -m unittest discover --start-directory ../python/tests --top-level-directory ../python
+    python -m unittest discover --start-directory ../python/tests --top-level-directory ../python
 ```
 
-Now every time that you will build the `loopback` package the unit tests will be executed as well. This is useful since it ensures that any changes to the Python code that might break the `calculate_ip_address` function will be detected during package build. 
+Now every time that you build the `loopback` package the unit tests are executed as well. This is useful since it ensures that any changes to the Python code that might break the `calculate_ip_address` function are detected during package build. 
 
 Execute the following command to build the loopback package with unit testing included:
 ```
@@ -463,9 +463,9 @@ make: Leaving directory '/home/developer/src/loopback/src'
 
 In the following section you will implement a system test for the `loopback` package. This will test that the package successfully loads into the NSO and that you can create device configurations with it. For better control over the produced device configuration you will also implement saving of the device configuration after each test run and comparing it with the expected configuration.
 
-The idea behind this is that you inspect the configuration that loopback package creates for the given output and save it in the `expected_configuration` directory. After each test run you save the configuration into `output` directory and the compare `output` of a current test run with the known `expected_configuration`. 
+The idea behind this is that you inspect the configuration that loopback package creates for the given output and save it in the `expected` directory. After each test run you save the configuration into `output` directory and the compare `output` of a current test run with the known `expected`. 
 
-This ensures that there are no unwanted configuration changes that would be result of a bad code or template change. If the change is expected you update the `expected_configuration` and the test will pass again.
+This ensures that there are no unwanted configuration changes that would be result of a bad code or template change. If the change is expected you update the `expected` and the test will pass again.
 
 Start by creating a netsim device that you will configure with loopback interfaces in the test. Create new folder `test` and use `ncs-netsim` command to add a ios-xr device to it.
 
@@ -713,7 +713,7 @@ cat ~/src/test/output/device-loopback.xml
 
 After you make sure that this is the expected configuration created by loopback package copy it over to `expected` directory:
 ```
-cp ~/src/test/output/device-loopback.xml expected/
+cp ~/src/test/output/device-loopback.xml ~/src/test/expected/
 ```
 
 Execute the test again. This time you can only execute the `test` target since test environment is already running:
