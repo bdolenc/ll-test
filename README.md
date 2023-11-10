@@ -397,9 +397,9 @@ touch ~/src/loopback/python/tests/test_loopback.py
 touch ~/src/loopback/python/tests/__init__.py
 ```
 
-> Note: The \_\_init\_\_.py file is needed so that `test_loopback.py` file is recognized by unittest library as Python module.
+> Note: The \_\_init\_\_.py file is needed so that `test_loopback.py` file is recognized by the unittest library as a Python package.
 
-You will use Python built-in Unit test library to implement a unit test that will check if function works correctly and returns correct host address for a given prefix. Add the following code to the created file `test_loopback.py`:
+You will use Python built-in Unit test library to implement a unit test that will check if function works correctly and returns correct host address for a given prefix. Test methods must start with the `test_` prefix and are placed in a class that extends the `unittest.TestCase` class. Add the following code to the created file `test_loopback.py`:
 
 ```python
 import unittest
@@ -437,10 +437,10 @@ all: fxs pylint test
 ...
 
 test:
-    developer:src > python -m unittest discover --start-directory ../python/tests --top-level-directory ../python
+    python -m unittest discover --start-directory ../python/tests --top-level-directory ../python
 ```
 
-Now every time that you will build the `loopback` package the unit tests will be executed as well. This is useful since it ensures that any changes to the Python code that might break the `calculate_ip_address` function will be detected during package build. 
+Now every time that you build the `loopback` package the unit tests are executed as well. This is useful since it ensures that any changes to the Python code that might break the `calculate_ip_address` function are detected during package build. 
 
 Execute the following command to build the loopback package with unit testing included:
 ```
